@@ -20,7 +20,7 @@ Full usage instructions, data format, and training commands are in the recipe RE
 
 ### Citation
 
-If you find this work useful, please cite our paper:
+If you find this work useful, please cite our paper (coming soon):
 
 ```
 @inproceedings{yourplaceholder,
