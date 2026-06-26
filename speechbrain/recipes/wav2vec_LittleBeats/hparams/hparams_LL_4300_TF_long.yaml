@@ -1,0 +1,143 @@
+# Generated template for baseline TF long div2 model
+# Replace placeholders with your own paths and filenames.
+seed: 1992
+__set_seed: !apply:torch.manual_seed [1992]
+
+data_folder: /path/to/data_folder
+output_folder: results/baseline_tf_long_div2/1992
+save_folder:
+  results/baseline_tf_long_div2/1992/save
+train_log:
+  results/baseline_tf_long_div2/1992/train_log.txt
+output_log:
+  results/baseline_tf_long_div2/1992/output_log.txt
+
+train_annotation:
+  /path/to/train.json
+valid_annotation:
+  /path/to/valid.json
+test_annotation:
+  /path/to/test.json
+
+# The train logger writes training statistics to a file, as well as stdout.
+train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger
+  save_file:
+    results/baseline_tf_long_div2/1992/train_log.txt
+
+ckpt_interval_minutes: 15
+
+# Training parameters
+number_of_epochs: 5
+lr: 0.0001
+lr_wav2vec2: 0.00001
+
+# Model parameters
+encoder_dim: 768
+dnn_out_dim: 384
+mean_pool_first_sp: true
+mean_pool_first_chn: true
+mean_pool_first_adu: true
+
+dataloader_options:
+  batch_size: 32
+  shuffle: true
+  num_workers: 2
+  drop_last: false
+
+# Wav2vec2 encoder (use a compatible pretrained model checkpoint)
+wav2vec2: &id001 !new:speechbrain.lobes.models.fairseq_wav2vec.FairseqWav2Vec2
+  pretrained_path:
+    /path/to/pretrained/LL_4300.pt
+  output_norm: true
+  freeze: false
+  output_all_hiddens: true
+  encoder_dropout: 0
+  include_CNN_layer: true
+  save_path:
+    results/baseline_tf_long_div2/1992/save/wav2vec_LL_4300.pt
+
+avg_pool: !new:speechbrain.nnet.pooling.StatisticsPooling
+  return_std: false
+
+cls_token: &id_cls !new:torch.nn.Embedding
+  num_embeddings: 1
+  embedding_dim: 768
+
+time_mhsa: &id_att !new:speechbrain.lobes.models.transformer.Transformer.TransformerEncoderLayer
+  d_ffn: 3072
+  nhead: 12
+  d_model: 768
+
+pos_enc: &id_pos_enc !new:speechbrain.lobes.models.transformer.Transformer.PositionalEncoding
+  input_size: 768
+  max_len: 1200
+
+layer_norm: &id_layernorm !new:speechbrain.nnet.normalization.LayerNorm
+  input_shape: (32, 150, 768)
+
+weighted_average: &id_wa !new:speechbrain.nnet.linear.WeightedAverage
+  input_size: 12
+  n_neurons: 1
+
+output_mlp: &idsp !new:speechbrain.nnet.linear.Linear
+  input_size: 384
+  n_neurons: 5
+  bias: false
+
+dnn: &id_dnn !new:speechbrain.lobes.models.CRDNN.DNN_Block
+  input_shape: [null, 768]
+  neurons: 384
+  dropout: 0.1
+
+epoch_counter: &id005 !new:speechbrain.utils.epoch_loop.EpochCounter
+  limit: 5
+
+modules:
+  wav2vec2: *id001
+  weighted_average: *id_wa
+  dnn: *id_dnn
+  output_mlp: *idsp
+  time_mhsa: *id_att
+  layer_norm: *id_layernorm
+  cls_token: *id_cls
+  pos_enc: *id_pos_enc
+
+model: &id002 !new:torch.nn.ModuleList
+- [*id_dnn, *idsp, *id_att, *id_cls, *id_wa, *id_layernorm]
+log_softmax: !new:speechbrain.nnet.activations.Softmax
+  apply_log: true
+
+compute_cost: !name:speechbrain.nnet.losses.nll_loss
+
+error_stats: !name:speechbrain.utils.metric_stats.MetricStats
+  metric: !name:speechbrain.nnet.losses.classification_error
+    reduction: batch
+
+error_stats_kic: !name:speechbrain.utils.metric_stats.KICMultitaskBinaryMetricStatsFlatDiv2
+  record_man: false
+opt_class: !name:torch.optim.Adam
+  lr: 0.0001
+
+wav2vec2_opt_class: !name:torch.optim.Adam
+  lr: 0.00001
+
+lr_annealing: &id003 !new:speechbrain.nnet.schedulers.NewBobScheduler
+  initial_value: 0.0001
+  improvement_threshold: 0.0025
+  annealing_factor: 0.9
+  patient: 0
+
+lr_annealing_wav2vec2: &id004 !new:speechbrain.nnet.schedulers.NewBobScheduler
+  initial_value: 0.00001
+  improvement_threshold: 0.0025
+  annealing_factor: 0.9
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+  checkpoints_dir:
+    results/baseline_tf_long_div2/1992/save
+  recoverables:
+    model: *id002
+    wav2vec2: *id001
+    lr_annealing_output: *id003
+    lr_annealing_wav2vec2: *id004
+    counter: *id005
